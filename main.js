@@ -60,7 +60,7 @@ const items = [
   
   // Timer countdown with fade-out animation
   function startTimer() {
-    let timeLeft = 15;
+    let timeLeft = 20;
     const timerDisplay = document.getElementById("timer");
     const countdown = setInterval(() => {
       timerDisplay.textContent = `Time left: ${timeLeft--}s`;
