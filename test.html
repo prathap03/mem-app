@@ -1,0 +1,863 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Interactive 3D Globe Network Visualization</title>
+  <style>
+    body { 
+      margin: 0; 
+      overflow: hidden; 
+      font-family: Arial, sans-serif;
+      background-color: #000408;
+    }
+    #controls { 
+      position: absolute; 
+      top: 20px; 
+      left: 20px; 
+      background-color: rgba(0, 20, 40, 0.8); 
+      padding: 15px;
+      border-radius: 10px;
+      border: 1px solid rgba(0, 150, 255, 0.3);
+    }
+    button { 
+      margin: 5px;
+      padding: 8px 15px;
+      font-size: 14px;
+      cursor: pointer;
+      background-color: rgba(0, 100, 255, 0.2);
+      border: 1px solid rgba(0, 150, 255, 0.5);
+      color: #fff;
+      border-radius: 5px;
+      transition: all 0.3s ease;
+    }
+    button:hover {
+      background-color: rgba(0, 150, 255, 0.4);
+    }
+    #info { 
+      position: absolute; 
+      bottom: 20px; 
+      left: 20px; 
+      color: #4a9eff;
+      font-size: 14px;
+      background-color: rgba(0, 20, 40, 0.8);
+      padding: 10px;
+      border-radius: 8px;
+      border: 1px solid rgba(0, 150, 255, 0.3);
+    }
+
+    #contextMenu {
+      display: none;
+      position: absolute;
+      background-color: rgba(0, 20, 40, 0.9);
+      border: 1px solid rgba(0, 150, 255, 0.5);
+      border-radius: 5px;
+      padding: 10px;
+      z-index: 1000;
+    }
+    #contextMenu button {
+      display: block;
+      width: 100%;
+      margin: 5px 0;
+      padding: 8px 15px;
+      background-color: rgba(0, 100, 255, 0.2);
+      border: 1px solid rgba(0, 150, 255, 0.5);
+      color: white;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background-color 0.3s;
+    }
+    #contextMenu button:hover {
+      background-color: rgba(0, 150, 255, 0.4);
+    }
+    .highlighted {
+      animation: pulse 1.5s infinite;
+    }
+    @keyframes pulse {
+      0% { opacity: 0.6; }
+      50% { opacity: 1; }
+      100% { opacity: 0.6; }
+    }
+    .sidebar {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 300px;
+    height: 100%;
+    background: rgba(0, 20, 40, 0.95);
+    color: #ffffff;
+    padding: 20px;
+    display: none;
+  }
+  .profile-header {
+    display: flex;
+    align-items: center;
+  }
+  .avatar {
+    width: 50px;
+    height: 50px;
+    border-radius: 25px;
+    margin-right: 10px;
+  }
+  .stats-grid p, .connections-list h3 {
+    font-size: 14px;
+    margin: 5px 0;
+  }
+  </style>
+</head>
+<body>
+  <div id="nodeInfoSidebar" class="sidebar">
+    <h2 id="nodeName">Node Details</h2>
+    <div class="profile-header">
+      <img id="nodeAvatar" src="./public/diyas.png" alt="Avatar" class="avatar" />
+      <h3 id="nodeTitle">Professional Title</h3>
+    </div>
+    <div class="stats-grid">
+      <p><strong>Skills:</strong> <span id="nodeSkills"></span></p>
+      <p><strong>Activity Score:</strong> <span id="nodeActivity"></span></p>
+      <p><strong>Response Rate:</strong> <span id="nodeResponseRate"></span></p>
+      <p><strong>Last Active:</strong> <span id="nodeLastActive"></span></p>
+    </div>
+    <div class="connections-list">
+      <h3>Connections</h3>
+      <ul id="nodeConnections"></ul>
+    </div>
+  </div>
+
+  <div id="controls">
+    <button onclick="addNode()">Add Node</button>
+    <button onclick="activateLinkingMode()">Create Connection</button>
+    <button onclick="auto()">Automate</button>
+  </div>
+  <div id="info">Click nodes to view details or create connections</div>
+  <div id="contextMenu">
+    <button onclick="removeSelectedConnection()">Remove Connection</button>
+    <button onclick="hideContextMenu()">Cancel</button>
+  </div>
+
+  
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  
+  <script>
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x000408);
+
+    var visited = [];
+    
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    const controls = new THREE.OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
+    controls.rotateSpeed = 0.5;
+
+    const globeRadius = 10;
+    const globeGeometry = new THREE.SphereGeometry(globeRadius, 64, 64);
+    const globeMaterial = new THREE.MeshPhongMaterial({
+      color: 0x162632,
+      transparent: true,
+      opacity: 0.6,
+      wireframe: false,
+      shininess: 50
+    });
+    const globe = new THREE.Mesh(globeGeometry, globeMaterial);
+    scene.add(globe);
+
+    const ambientLight = new THREE.AmbientLight(0x404040);
+    scene.add(ambientLight);
+
+    const directionalLight = new THREE.DirectionalLight(0x4a9eff, 1);
+    directionalLight.position.set(5, 3, 5);
+    scene.add(directionalLight);
+
+    camera.position.z = 25;
+
+    // Store nodes and their meshes
+    const nodes = new Map();
+    let nodeCounter = 0;
+    let linkMode = false;
+    let selectedNode = null;
+
+    let selectedConnection = null;
+    let highlightedElements = new Set();
+
+    function handleConnectionClick(connection, event) {
+  event.preventDefault();
+  event.stopPropagation();
+  
+  // Clear previous highlights
+  resetHighlights();
+  
+  selectedConnection = connection;
+  
+  // Get connected nodes
+  const startNodeId = connection.userData.startNode;
+  const endNodeId = connection.userData.endNode;
+  const startNode = nodes.get(startNodeId);
+  const endNode = nodes.get(endNodeId);
+  
+  // Highlight the connection
+  highlightConnection(connection);
+  
+  // Highlight connected nodes
+  if (startNode && endNode) {
+    highlightNode(startNode);
+    highlightNode(endNode);
+    
+    // Update info display
+    updateConnectionInfo(startNode, endNode);
+  }
+  
+  // Show context menu
+  showContextMenu(event.clientX, event.clientY);
+}
+
+function highlightConnection(connection) {
+  if (!connection) return;
+  
+  const originalMaterial = connection.material;
+  const highlightMaterial = originalMaterial.clone();
+  highlightMaterial.emissive = new THREE.Color(0x4a9eff);
+  highlightMaterial.emissiveIntensity = 0.5;
+  highlightMaterial.opacity = 1;
+  connection.material = highlightMaterial;
+  
+  connection.userData.originalMaterial = originalMaterial;
+  highlightedElements.add(connection);
+}
+
+function highlightNode(nodeData) {
+  if (!nodeData || !nodeData.mesh || !nodeData.glowMesh) return;
+  
+  // Store original properties for the main mesh
+  if (!nodeData.mesh.userData.originalProperties) {
+    nodeData.mesh.userData.originalProperties = {
+      emissiveIntensity: nodeData.mesh.material.emissiveIntensity
+    };
+  }
+  
+  // Store original properties for the glow mesh
+  if (!nodeData.glowMesh.userData.originalProperties) {
+    nodeData.glowMesh.userData.originalProperties = {
+      opacity: nodeData.glowMesh.material.opacity
+    };
+  }
+  
+  // Enhance node appearance
+  nodeData.mesh.material.emissiveIntensity = 1;
+  nodeData.glowMesh.material.opacity = 0.8;
+  
+  // Add to highlighted elements
+  highlightedElements.add(nodeData.mesh);
+  highlightedElements.add(nodeData.glowMesh);
+}
+
+    
+
+function resetHighlights() {
+  highlightedElements.forEach(element => {
+    if (element.type === 'Mesh') {
+      if (element.userData.originalMaterial) {
+        element.material = element.userData.originalMaterial;
+        delete element.userData.originalMaterial;
+      }
+      if (element.userData.originalProperties) {
+        if (element.userData.originalProperties.emissiveIntensity !== undefined) {
+          element.material.emissiveIntensity = element.userData.originalProperties.emissiveIntensity;
+        }
+        if (element.userData.originalProperties.opacity !== undefined) {
+          element.material.opacity = element.userData.originalProperties.opacity;
+        }
+        delete element.userData.originalProperties;
+      }
+    }
+  });
+  
+  highlightedElements.clear();
+  selectedConnection = null;
+  hideContextMenu();
+}
+
+function removeSelectedConnection() {
+  if (!selectedConnection) return;
+  
+  const startNodeId = selectedConnection.userData.startNode;
+  const endNodeId = selectedConnection.userData.endNode;
+  
+  const startNode = nodes.get(startNodeId);
+  const endNode = nodes.get(endNodeId);
+  
+  if (startNode && endNode) {
+    // Remove particles
+    const particlesToRemove = selectedConnection.userData.particles || [];
+    particlesToRemove.forEach(p => scene.remove(p));
+    
+    // Update node connections
+    startNode.connections = Math.max(0, startNode.connections - 1);
+    endNode.connections = Math.max(0, endNode.connections - 1);
+    
+    // Remove connection from links arrays
+    startNode.links = startNode.links.filter(link => link.mesh !== selectedConnection);
+    endNode.links = endNode.links.filter(link => link.mesh !== selectedConnection);
+    
+    // Update node colors
+    updateNodeColor(startNode);
+    updateNodeColor(endNode);
+  }
+  
+  // Remove connection mesh
+  scene.remove(selectedConnection);
+  
+  // Reset highlights and hide menu
+  resetHighlights();
+  
+  // Update info display
+  document.getElementById('info').innerHTML = 'Connection removed';
+}
+    function showContextMenu(x, y) {
+      const menu = document.getElementById('contextMenu');
+      menu.style.display = 'block';
+      menu.style.left = Math.min(x, window.innerWidth - menu.offsetWidth) + 'px';
+      menu.style.top = Math.min(y, window.innerHeight - menu.offsetHeight) + 'px';
+    }
+
+    function hideContextMenu() {
+      document.getElementById('contextMenu').style.display = 'none';
+    }
+
+    function updateConnectionInfo(startNode, endNode) {
+      document.getElementById('info').innerHTML = `
+        Connection: ${startNode.id} ↔ ${endNode.id}<br>
+        Distance: ${startNode.position.distanceTo(endNode.position).toFixed(2)} units
+      `;
+    }
+
+    // Color schemes
+    function getNodeColor(connections) {
+      if (connections >= 5) return 0xff3366; // High connectivity - red
+      if (connections >= 3) return 0xffaa00; // Medium connectivity - orange
+      return 0x4a9eff; // Low connectivity - blue
+    }
+
+    function getConnectionColor(distance) {
+      // Generate color based on distance between nodes
+      const hue = (distance * 5) % 360;
+      return new THREE.Color(`hsl(${hue}, 70%, 50%)`);
+    }
+
+    function addNode() {
+      const lat = Math.random() * 180 - 90;
+      const lon = Math.random() * 360 - 180;
+      const position = latLonToVector3(lat, lon, globeRadius + 0.2);
+
+      nodeCounter++;
+      const nodeData = {
+        id: `Node ${nodeCounter}`,
+        position: position.clone(),
+        connections: 0,
+        links: [],
+        particles: []
+      };
+
+      const nodeGeometry = new THREE.SphereGeometry(0.15, 16, 16);
+      const nodeMaterial = new THREE.MeshPhongMaterial({
+        color: getNodeColor(0),
+        emissive: getNodeColor(0),
+        emissiveIntensity: 0.5,
+        shininess: 100
+      });
+      
+      const nodeMesh = new THREE.Mesh(nodeGeometry, nodeMaterial);
+      nodeMesh.position.copy(position);
+      nodeMesh.nodeId = nodeData.id;
+      scene.add(nodeMesh);
+
+      const glowGeometry = new THREE.SphereGeometry(0.2, 16, 16);
+      const glowMaterial = new THREE.MeshPhongMaterial({
+        color: getNodeColor(0),
+        transparent: true,
+        opacity: 0.3
+      });
+      const glowMesh = new THREE.Mesh(glowGeometry, glowMaterial);
+      glowMesh.position.copy(position);
+      scene.add(glowMesh);
+
+      nodeData.mesh = nodeMesh;
+      nodeData.glowMesh = glowMesh;
+      nodes.set(nodeData.id, nodeData);
+    }
+
+  function auto(){
+    var c=0;
+   for(var i=0;i<250;i++){
+    addNode()
+   }
+    
+    var timer =setInterval(()=>{
+      if(c<550){
+        var startObj =Array.from(nodes)[Math.floor(Math.random() * nodes.size)];
+        var [skey,svalue] = startObj;
+        var endObj = Array.from(nodes)[Math.floor(Math.random() * nodes.size)];
+        const [ekey,evalue] = endObj
+        if(skey!=ekey){
+
+          createConnection(nodes.get(skey),nodes.get(ekey))
+          c++;
+        }
+       
+      }else{
+        clearInterval(timer)
+      }
+    },2)
+  
+  }
+
+
+
+  function createConnection(startNode, endNode) {
+  const start = startNode.position;
+  const end = endNode.position;
+  const distance = start.distanceTo(end);
+  if(visited.includes(`${startNode.id}-${endNode.id}`) || visited.includes(`${endNode.id}-${startNode.id}`)){
+    
+    return;
+  }
+  
+  const points = [];
+  const segments = 50;
+  
+  const midPoint = new THREE.Vector3().addVectors(start, end).multiplyScalar(0.5);
+  midPoint.normalize().multiplyScalar(globeRadius + distance * 0.3);
+  
+  for (let i = 0; i <= segments; i++) {
+    const t = i / segments;
+    const point = new THREE.Vector3();
+    
+    point.x = quadraticBezier(start.x, midPoint.x, end.x, t);
+    point.y = quadraticBezier(start.y, midPoint.y, end.y, t);
+    point.z = quadraticBezier(start.z, midPoint.z, end.z, t);
+    
+    points.push(point);
+  }
+
+  const curve = new THREE.CatmullRomCurve3(points);
+  const geometry = new THREE.TubeGeometry(curve, segments, 0.03, 8, false);
+  const material = new THREE.MeshPhongMaterial({
+    color: getConnectionColor(distance),
+    transparent: true,
+    opacity: 0.6,
+    shininess: 100
+  });
+  
+  const connectionMesh = new THREE.Mesh(geometry, material);
+  
+  // Set the userData for the connection mesh
+  connectionMesh.userData = {
+    startNode: startNode.id,
+    endNode: endNode.id,
+    distance: distance,
+    type: 'connection'
+  };
+
+  visited.push(`${startNode.id}-${endNode.id}`)
+  
+  scene.add(connectionMesh);
+
+  // Create particle system for this connection
+  const particles = createParticleSystem(curve, startNode, endNode);
+  
+  // Store reference to particles in userData
+  connectionMesh.userData.particles = particles;
+
+  const connection = {
+    source: startNode.id,
+    target: endNode.id,
+    mesh: connectionMesh,
+    curve: curve
+  };
+
+  startNode.connections++;
+  endNode.connections++;
+  startNode.links.push(connection);
+  endNode.links.push(connection);
+
+  // Update node colors based on new connection count
+  updateNodeColor(startNode);
+  updateNodeColor(endNode);
+
+  return connectionMesh;
+}
+
+function findShortestPath(startNode, endNode) {
+  // Implementation of Dijkstra's algorithm
+  const distances = new Map();
+  const previous = new Map();
+  const unvisited = new Set();
+
+  // Initialize distances
+  nodes.forEach((node, id) => {
+    distances.set(id, Infinity);
+    unvisited.add(id);
+  });
+  distances.set(startNode.id, 0);
+
+  while (unvisited.size > 0) {
+    // Find node with minimum distance
+    let minDistance = Infinity;
+    let current = null;
+    unvisited.forEach(nodeId => {
+      if (distances.get(nodeId) < minDistance) {
+        minDistance = distances.get(nodeId);
+        current = nodeId;
+      }
+    });
+
+    if (current === null || current === endNode.id) break;
+    unvisited.delete(current);
+
+    // Get current node's neighbors
+    const currentNode = nodes.get(current);
+    currentNode.links.forEach(link => {
+      const neighborId = link.source === current ? link.target : link.source;
+      if (!unvisited.has(neighborId)) return;
+
+      const distance = distances.get(current) + 1; // Using 1 as weight for all connections
+      if (distance < distances.get(neighborId)) {
+        distances.set(neighborId, distance);
+        previous.set(neighborId, current);
+      }
+    });
+  }
+
+  // Reconstruct path
+  const path = [];
+  let current = endNode.id;
+  while (current !== undefined) {
+    path.unshift(current);
+    current = previous.get(current);
+  }
+
+  return path.length > 1 ? path : null;
+}
+
+function highlightPath(path) {
+  resetHighlights();
+  
+  if (!path || path.length < 2) {
+    document.getElementById('info').innerHTML = 'No path found between selected nodes';
+    return;
+  }
+
+  // Highlight nodes and connections along the path
+  for (let i = 0; i < path.length - 1; i++) {
+    const currentNode = nodes.get(path[i]);
+    const nextNode = nodes.get(path[i + 1]);
+    
+    // Highlight nodes
+    highlightNode(currentNode);
+    highlightNode(nextNode);
+    
+    // Find and highlight connection between nodes
+    const connection = currentNode.links.find(link => 
+      link.source === path[i] && link.target === path[i + 1] ||
+      link.source === path[i + 1] && link.target === path[i]
+    );
+    
+    if (connection) {
+      highlightConnection(connection.mesh);
+    }
+  }
+
+  // Update info display
+  const pathLength = path.length - 1;
+  const averagePathLength = calculateAveragePathLength();
+  document.getElementById('info').innerHTML = `
+    Path length: ${pathLength} steps<br>
+    Network average path length: ${averagePathLength.toFixed(2)}<br>
+    Small world coefficient: ${(Math.log(nodes.size) / averagePathLength).toFixed(2)}
+  `;
+}
+
+function calculateAveragePathLength() {
+  let totalPaths = 0;
+  let totalLength = 0;
+  const sampleSize = Math.min(nodes.size, 20); // Sample size for performance
+  
+  // Random sampling of node pairs
+  for (let i = 0; i < sampleSize; i++) {
+    const startNode = Array.from(nodes.values())[Math.floor(Math.random() * nodes.size)];
+    for (let j = 0; j < sampleSize; j++) {
+      const endNode = Array.from(nodes.values())[Math.floor(Math.random() * nodes.size)];
+      if (startNode.id === endNode.id) continue;
+      
+      const path = findShortestPath(startNode, endNode);
+      if (path) {
+        totalPaths++;
+        totalLength += path.length - 1;
+      }
+    }
+  }
+  
+  return totalLength / totalPaths;
+}
+
+// Add a new button to the controls div
+const shortestPathBtn = document.createElement('button');
+shortestPathBtn.textContent = 'Find Shortest Path';
+shortestPathBtn.onclick = activateShortestPathMode;
+document.getElementById('controls').appendChild(shortestPathBtn);
+
+// Add these variables at the top with other state variables
+let shortestPathMode = false;
+let firstSelectedNode = null;
+
+function activateShortestPathMode() {
+  shortestPathMode = true;
+  firstSelectedNode = null;
+  linkMode = false;
+  resetHighlights();
+  document.getElementById('info').innerHTML = 'Select first node for shortest path';
+}
+
+// Modify the handleNodeClick function to include shortest path logic
+function handleNodeClick(nodeId) {
+  const node = nodes.get(nodeId);
+  if (!node) return;
+
+  if (shortestPathMode) {
+    if (!firstSelectedNode) {
+      firstSelectedNode = node;
+      document.getElementById('info').innerHTML = 'Select second node for shortest path';
+    } else if (firstSelectedNode !== node) {
+      const path = findShortestPath(firstSelectedNode, node);
+      highlightPath(path);
+      shortestPathMode = false;
+      firstSelectedNode = null;
+    }
+  } else if (linkMode) {
+    if (!selectedNode) {
+      selectedNode = node;
+      document.getElementById('info').innerHTML = 'Select second node to connect';
+    } else if (selectedNode !== node) {
+      createConnection(selectedNode, node);
+      linkMode = false;
+      selectedNode = null;
+      document.getElementById('info').innerHTML = 'Connection created';
+    }
+  } else {
+    displayInfo(node);
+  }
+}
+
+// Also update createParticleSystem to return the particles array
+function createParticleSystem(curve, startNode, endNode) {
+  const particleCount = 5;
+  const particles = [];
+
+  for (let i = 0; i < particleCount; i++) {
+    const geometry = new THREE.SphereGeometry(0.05, 8, 8);
+    const material = new THREE.MeshBasicMaterial({
+      color: 0xffffff,
+      transparent: true,
+      opacity: 0.8
+    });
+    const particle = new THREE.Mesh(geometry, material);
+    
+    particle.progress = i * (1 / particleCount);
+    particle.speed = 0.002 + Math.random() * 0.001;
+    particle.curve = curve;
+    
+    scene.add(particle);
+    particles.push(particle);
+    
+    startNode.particles.push(particle);
+    endNode.particles.push(particle);
+  }
+
+  return particles;
+}
+
+
+    
+
+    
+
+    function updateParticles() {
+      nodes.forEach(node => {
+        node.particles.forEach(particle => {
+          particle.progress += particle.speed;
+          if (particle.progress >= 1) {
+            particle.progress = 0;
+          }
+          
+          const position = particle.curve.getPoint(particle.progress);
+          particle.position.copy(position);
+        });
+      });
+    }
+
+    function updateNodeColor(node) {
+      const color = getNodeColor(node.connections);
+      node.mesh.material.color.setHex(color);
+      node.mesh.material.emissive.setHex(color);
+      node.glowMesh.material.color.setHex(color);
+    }
+
+    function quadraticBezier(p0, p1, p2, t) {
+      const oneMinusT = 1 - t;
+      return Math.pow(oneMinusT, 2) * p0 + 2 * oneMinusT * t * p1 + Math.pow(t, 2) * p2;
+    }
+
+    function activateLinkingMode() {
+      linkMode = true;
+      selectedNode = null;
+      document.getElementById("info").innerHTML = "Select first node to connect";
+    }
+
+    // function handleNodeClick(nodeId) {
+    //   const node = nodes.get(nodeId);
+    //   if (!node) return;
+
+    //   if (linkMode) {
+    //     if (!selectedNode) {
+    //       selectedNode = node;
+    //       document.getElementById("info").innerHTML = "Select second node to connect";
+    //     } else if (selectedNode !== node) {
+    //       createConnection(selectedNode, node);
+    //       linkMode = false;
+    //       selectedNode = null;
+    //       document.getElementById("info").innerHTML = "Connection created";
+    //     }
+    //   } else {
+    //     displayInfo(node);
+    //   }
+    // }
+
+    // function displayInfo(node) {
+    //   const influenceLevel = node.connections > 4 ? 'High' : node.connections > 2 ? 'Medium' : 'Low';
+    //   const colorHex = getNodeColor(node.connections).toString(16);
+      
+    //   document.getElementById("info").innerHTML = `
+    //     <strong>${node.id}</strong><br>
+    //     Connections: ${node.connections}<br>
+    //     Influence Level: ${influenceLevel}<br>
+    //     Color: #${colorHex}
+    //   `;
+    // }
+
+    function displayInfo(node) {
+  document.getElementById("nodeInfoSidebar").style.display = 'block';
+
+  // Set node information
+  document.getElementById("nodeName").textContent = node.id;
+  document.getElementById("nodeTitle").textContent = node.title || "N/A";
+  document.getElementById("nodeSkills").textContent = node.skills || "N/A";
+  document.getElementById("nodeActivity").textContent = node.activityScore || "N/A";
+  document.getElementById("nodeResponseRate").textContent = node.responseRate || "N/A";
+  document.getElementById("nodeLastActive").textContent = node.lastActive || "N/A";
+
+  const influenceLevel = node.connections > 4 ? 'High' : node.connections > 2 ? 'Medium' : 'Low';
+      const colorHex = getNodeColor(node.connections).toString(16);
+      
+      document.getElementById("info").innerHTML = `
+        <strong>${node.id}</strong><br>
+        Connections: ${node.connections}<br>
+        Influence Level: ${influenceLevel}<br>
+        Color: #${colorHex}
+      `;
+
+  // Populate connections list
+  const connectionsList = document.getElementById("nodeConnections");
+  connectionsList.innerHTML = "";
+  node.links.forEach(link => {
+    const connectionItem = document.createElement("li");
+    const targetNode = link.source === node.id ? link.target : link.source;
+    const mutualConnections = link.mutualConnections || 0;
+    connectionItem.textContent = `${targetNode} - Mutuals: ${mutualConnections}`;
+    connectionsList.appendChild(connectionItem);
+  });
+}
+
+
+    function latLonToVector3(lat, lon, radius) {
+      const phi = (90 - lat) * (Math.PI / 180);
+      const theta = (lon + 180) * (Math.PI / 180);
+
+      const x = -(radius * Math.sin(phi) * Math.cos(theta));
+      const y = radius * Math.cos(phi);
+      const z = radius * Math.sin(phi) * Math.sin(theta);
+
+      return new THREE.Vector3(x, y, z);
+    }
+
+    function animate() {
+      requestAnimationFrame(animate);
+      controls.update();
+      updateParticles();
+      renderer.render(scene, camera);
+    }
+
+    animate();
+
+    // Event Listeners
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    window.addEventListener('click', (event) => {
+      const mouse = new THREE.Vector2(
+        (event.clientX / window.innerWidth) * 2 - 1,
+        -(event.clientY / window.innerHeight) * 2 + 1
+      );
+      
+      const raycaster = new THREE.Raycaster();
+      raycaster.setFromCamera(mouse, camera);
+      const intersects = raycaster.intersectObjects(scene.children);
+
+      let handled = false;
+      
+      for (const intersect of intersects) {
+        
+        if (intersect.object.nodeId) {
+          handleNodeClick(intersect.object.nodeId);
+          break;
+        }
+        if (intersect.object.userData.startNode) {
+
+          handleConnectionClick(intersect.object, event);
+          handled = true;
+          break;
+        }
+      }
+
+      if (!handled && event.target === renderer.domElement) {
+        resetHighlights();
+        hideContextMenu();
+      }
+
+    });
+
+
+     // Hide context menu on right click
+     window.addEventListener('contextmenu', (event) => {
+      event.preventDefault();
+    });
+
+    // Hide context menu when clicking outside
+    document.addEventListener('click', (event) => {
+      if (!event.target.closest('#contextMenu')) {
+        hideContextMenu();
+      }
+      if (!event.target.closest('#nodeInfoSidebar') && event.target.nodeId) {
+    document.getElementById("nodeInfoSidebar").style.display = 'none';
+  }
+    });
+  </script>
+</body>
+</html>
