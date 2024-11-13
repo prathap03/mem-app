@@ -54,7 +54,7 @@ const items = [
     link.download = "shuffled_items.txt";
     link.style.display = "none"; // Hide the link element from the view
     document.body.appendChild(link);
-    link.click(); // Automatically trigger the download
+    // link.click(); // Automatically trigger the download
     document.body.removeChild(link); // Clean up after download
   }
   
@@ -133,9 +133,9 @@ function captureScreenshot() {
 // Call this function once the timer ends or at any desired point in the game flow
 function endGameAndCapture() {
      // Generate a text file for download
-     createDownloadFile(itemNames);
+    //  createDownloadFile(itemNames);
     hideItems(); // Call the function to hide items
-    captureScreenshot(); // Capture screenshot after hiding
+    // captureScreenshot(); // Capture screenshot after hiding
     resetGame(); // Reset the game state if needed
 }
 
