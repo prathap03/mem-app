@@ -133,9 +133,9 @@ function captureScreenshot() {
 // Call this function once the timer ends or at any desired point in the game flow
 function endGameAndCapture() {
      // Generate a text file for download
-    //  createDownloadFile(itemNames);
+     createDownloadFile(itemNames);
     hideItems(); // Call the function to hide items
-    // captureScreenshot(); // Capture screenshot after hiding
+    captureScreenshot(); // Capture screenshot after hiding
     resetGame(); // Reset the game state if needed
 }
 
