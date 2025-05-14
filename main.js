@@ -54,7 +54,7 @@ const items = [
     link.download = "shuffled_items.txt";
     link.style.display = "none"; // Hide the link element from the view
     document.body.appendChild(link);
-    // link.click(); // Automatically trigger the download
+    link.click(); // Automatically trigger the download
     document.body.removeChild(link); // Clean up after download
   }
   
